@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SKILL.md frontmatter",
+  "description": "Schema for the YAML frontmatter of every skills/*/*/SKILL.md in this repo. Follows the Agent Skills spec (https://agentskills.io/specification).",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "maxLength": 64,
+      "description": "Kebab-case, must match the skill's directory name, unique across the whole repo."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "Third person, starts with 'Use when...'. Describes ONLY when to use the skill (triggers, symptoms, keywords) — never a summary of its workflow."
+    }
+  },
+  "additionalProperties": true
+}
