@@ -45,20 +45,26 @@ Skill chỉ dành cho một tool: đặt file marker rỗng `.claude-only` hoặ
 
 Quy ước chi tiết cho agent: xem [AGENTS.md](AGENTS.md).
 
+Skills cài từ nguồn ngoài (Google Android skills, Vercel…) **không** nằm trong
+repo này — xem danh sách và cách cài lại ở [THIRD-PARTY.md](THIRD-PARTY.md).
+
 ## Mục lục skills
-
-> Chưa có skill nào — sẽ được cập nhật khi migrate các skills hiện có về repo.
-
-### android
-
-### ios
 
 ### mobile
 
-### backend
-
-### frontend
+- [`pytorch-to-tflite`](skills/mobile/pytorch-to-tflite/SKILL.md) — convert model PyTorch/HuggingFace sang TFLite cho Android: quantise, host, verify trên device.
 
 ### workflow
 
+- [`investigate-bug`](skills/workflow/investigate-bug/SKILL.md) — điều tra bug tới root cause có bằng chứng, đề xuất fix nhưng chờ duyệt trước khi sửa code.
+- [`quick-fix`](skills/workflow/quick-fix/SKILL.md) — fix nhanh gọn cho bug nhỏ/đã hiểu rõ, bỏ qua TDD và planning nhiều bước.
+- [`provide-info`](skills/workflow/provide-info/SKILL.md) — trả lời/giải thích về codebase ở chế độ read-only, không sửa code.
+
 ### tools
+
+- [`reddit-fetch`](skills/tools/reddit-fetch/SKILL.md) — fetch nội dung Reddit qua Gemini CLI hoặc curl JSON API khi bị 403/block.
+- [`skill-config`](skills/tools/skill-config/SKILL.md) — bật/tắt/liệt kê Claude Code skills theo nhóm và scope. *(`.claude-only`)*
+
+### android · ios · backend · frontend
+
+*(trống — chờ skill mới)*
