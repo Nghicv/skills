@@ -76,6 +76,31 @@ link_skill() {
   fi
 }
 
+# prune_dest <dest_dir> <marker> — remove symlinks we own that no longer
+# belong: their target was deleted/renamed in the repo, or now carries the
+# opposite harness marker.
+prune_dest() {
+  local dest_dir="$1" marker="$2"
+  [ -d "$dest_dir" ] || return 0
+  local entry target
+  for entry in "$dest_dir"/*; do
+    [ -L "$entry" ] || continue
+    target="$(readlink "$entry")"
+    case "$target" in
+      "$REPO"/skills/*) ;;
+      *) continue ;;
+    esac
+    if [ ! -e "$target/SKILL.md" ] || [ -e "$target/$marker" ]; then
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "would prune $entry (target gone or excluded by $marker)"
+      else
+        rm "$entry"
+        echo "pruned $entry"
+      fi
+    fi
+  done
+}
+
 count=0
 while IFS= read -r -d '' skill_md; do
   src="$(dirname "$skill_md")"
@@ -89,5 +114,8 @@ while IFS= read -r -d '' skill_md; do
     link_skill "$src" "$AGENTS_DEST"
   fi
 done < <(find "$REPO/skills" -mindepth 3 -maxdepth 3 -name SKILL.md -print0 | sort -z)
+
+prune_dest "$CLAUDE_DEST" ".codex-only"
+prune_dest "$AGENTS_DEST" ".claude-only"
 
 echo "done: $count skill(s) processed."

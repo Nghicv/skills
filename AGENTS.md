@@ -20,6 +20,11 @@ Agent-Skills-compatible harnesses (`~/.agents/skills`) via symlinks created by
   would ship in a future Codex plugin, which discovers SKILL.md recursively).
 - A skill for one harness only gets an empty marker file in its directory:
   `.claude-only` or `.codex-only`.
+- Third-party skills (installed from the internet — Google Android set,
+  Vercel set, etc.) are NEVER vendored into this repo. They live directly in
+  the harness dirs and are tracked in `THIRD-PARTY.md`; update that table when
+  one is installed or removed. Exception: a third-party skill the owner has
+  forked/customized may move into the repo with its origin noted in SKILL.md.
 
 ## When adding or editing a skill
 
@@ -30,7 +35,9 @@ Agent-Skills-compatible harnesses (`~/.agents/skills`) via symlinks created by
 3. Run `scripts/validate.sh` — it must pass before committing.
 4. Update the skill index in `README.md`.
 5. No install step is needed after edits: links are symlinks. Run
-   `scripts/install.sh` only when a skill is added, renamed, or removed.
+   `scripts/install.sh` only when a skill is added, renamed, or removed — it
+   also prunes repo-owned links whose skill was deleted, renamed, or excluded
+   by a harness marker.
 
 ## Useful commands
 

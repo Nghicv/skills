@@ -12,7 +12,8 @@ cập nhật.
 ## Cài đặt
 
 ```bash
-scripts/install.sh            # symlink toàn bộ skills vào cả 2 harness
+scripts/install.sh            # symlink toàn bộ skills vào cả 2 harness,
+                              # đồng thời dọn link của skill đã xóa/đổi tên
 scripts/install.sh --dry-run  # xem trước, không ghi gì
 scripts/install.sh --force    # thay thế cả entry cũ không do repo quản lý
 ```
@@ -25,6 +26,8 @@ deprecated/                             # skill ngừng dùng (không được l
 templates/skill-template/               # khung chuẩn để tạo skill mới
 skills.schema.json                      # contract frontmatter
 scripts/                                # install / validate / list
+THIRD-PARTY.md                          # manifest skills cài từ nguồn ngoài
+docs/specs/                             # tài liệu thiết kế
 ```
 
 Domain: `android` · `ios` · `mobile` (cross-platform) · `backend` · `frontend`
