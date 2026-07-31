@@ -13,12 +13,22 @@ while IFS= read -r -d '' skill_md; do
   description="$(awk '
     NR == 1 && $0 == "---" { in_fm = 1; next }
     in_fm && $0 == "---" { exit }
+    in_fm && collecting {
+      if ($0 ~ /^[[:space:]]+[^[:space:]]/) {
+        sub(/^[[:space:]]+/, "")
+        val = val (val == "" ? "" : " ") $0
+        next
+      }
+      exit
+    }
     in_fm && /^description:/ {
       sub(/^description:[[:space:]]*/, "")
       gsub(/^["'\'']|["'\'']$/, "")
-      print
-      exit
+      if ($0 != "") { print; exit }
+      collecting = 1
+      next
     }
+    END { if (collecting) print val }
   ' "$skill_md")"
 
   if [ "$domain" != "$current_domain" ]; then

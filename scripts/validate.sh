@@ -16,16 +16,28 @@ errors=0
 fail() { echo "FAIL: $1" >&2; errors=$((errors + 1)); }
 
 # frontmatter <file> <key> — print the value of a top-level frontmatter key.
+# Handles both single-line values and YAML folded style (value on following
+# indented lines, e.g. the vercel skills' multi-line descriptions).
 frontmatter() {
   awk -v key="$2" '
     NR == 1 && $0 == "---" { in_fm = 1; next }
     in_fm && $0 == "---" { exit }
+    in_fm && collecting {
+      if ($0 ~ /^[[:space:]]+[^[:space:]]/) {
+        sub(/^[[:space:]]+/, "")
+        val = val (val == "" ? "" : " ") $0
+        next
+      }
+      exit
+    }
     in_fm && $0 ~ "^" key ":" {
       sub("^" key ":[[:space:]]*", "")
       gsub(/^["'\'']|["'\'']$/, "")
-      print
-      exit
+      if ($0 != "") { print; exit }
+      collecting = 1
+      next
     }
+    END { if (collecting) print val }
   ' "$1"
 }
 

@@ -22,9 +22,9 @@ dưới đây (đa số qua [skills.sh](https://skills.sh): `npx skills add <sou
 | r8-analyzer | Google — bộ Android skills chính thức | |
 | find-skills | skills.sh (Vercel Labs) | |
 | vercel-react-best-practices | vercel-labs/agent-skills | |
-| vercel-composition-patterns | vercel-labs/agent-skills | **thiếu SKILL.md** — cài lại hoặc xóa |
-| vercel-react-native-skills | vercel-labs/agent-skills | **thiếu SKILL.md** — cài lại hoặc xóa |
+| vercel-composition-patterns | vercel-labs/agent-skills (author: vercel, MIT) | description dạng YAML nhiều dòng — hợp lệ |
+| vercel-react-native-skills | vercel-labs/agent-skills (author: vercel, MIT) | description dạng YAML nhiều dòng — hợp lệ |
 | web-design-guidelines | Vercel — Web Interface Guidelines | |
-| app-store-screenshots | *chưa xác nhận* | có thể là tự viết → nếu đúng thì move vào `skills/ios/` |
+| app-store-screenshots | nguồn ngoài (chưa rõ repo gốc) | bản gốc ở `~/.agents/skills`, `~/.claude/skills` symlink theo |
 
 > Khi cài mới hoặc gỡ một skill bên thứ ba, cập nhật bảng này.
