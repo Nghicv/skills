@@ -1,0 +1,14 @@
+# Chỉ metadata. File ảnh KHÔNG bao giờ commit vào git.
+sets:
+  v1-light:
+    locales: [en-US]
+    source: "figma://file/XXXX?node=1-2"
+    export_dir: "~/Drive/aso-assets/v1-light"   # ngoài repo
+    ready_for_submission: false                 # true sẽ bị chặn nếu còn slide chưa clear IP
+    slides:
+      - { n: 1, id: hero,      ip_cleared: true }
+      - { n: 2, id: feature-a, ip_cleared: true }
+    ppo:
+      status: none        # none | running | done
+      started:
+      daily_page_views:   # <500 thì PPO khó ra kết quả tin cậy — xem references/screenshots-ppo.md

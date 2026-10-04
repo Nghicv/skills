@@ -55,6 +55,7 @@ repo này — xem danh sách và cách cài lại ở [THIRD-PARTY.md](THIRD-PAR
 
 ### mobile
 
+- [`aso`](skills/mobile/aso/SKILL.md) — App Store Optimization iOS + Android: nghiên cứu keyword, version hoá metadata đa locale, đo ranking, chẩn đoán tụt hạng.
 - [`pytorch-to-tflite`](skills/mobile/pytorch-to-tflite/SKILL.md) — convert model PyTorch/HuggingFace sang TFLite cho Android: quantise, host, verify trên device.
 
 ### workflow

@@ -1,0 +1,19 @@
+# Mỗi keyword giữ luôn trí nhớ về nó — đừng chỉ liệt kê chuỗi.
+# core: true  = được bảo vệ, chạm ngưỡng rollback thì cảnh báo
+# platform: both (mặc định) | ios | android
+# status: active | contested | gap | retired
+
+- c: us
+  kw: "example keyword"
+  core: true
+  platform: both
+  why: "từ khoá định danh, nguồn từ Title"
+
+# Ví dụ một keyword đã điều tra xong — ghi lại để không ai đo lại
+# - c: us
+#   kw: "head term"
+#   core: false
+#   status: contested
+#   blocker: "token 'X' — app không lọt kết quả cho chính token đó"
+#   competitor_exact_match: "App tên trùng khít keyword đang giữ #1"
+#   verdict: "SKIP — không thắng bằng metadata; dồn sang từ ngách"

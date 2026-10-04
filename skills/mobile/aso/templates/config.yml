@@ -1,0 +1,26 @@
+# Hạ tầng — hiếm khi đổi. Keyword nằm ở keywords.yml.
+platform: ios            # ios | android | both
+
+app:
+  name: "My App"
+  adam_id: "0000000000"            # iOS
+  package_name: "com.example.app"  # Android
+  bundle_id: com.example.app
+  primary_locale: en-US
+
+# iOS — id: cho ASC Analytics API · sf_header: cho iTunes autocomplete
+storefronts:
+  us: { id: "143441", sf_header: "143441-1,29" }
+  # vn: { id: "143471", sf_header: "143471-2,29" }
+  # jp: { id: "143462", sf_header: "143462-9,29" }
+
+# Android — measure_play.py dùng chính mã quốc gia ở trên (viết hoa) làm gl
+android:
+  metadata_version: ""   # version metadata Play đang live, để gắn nhãn phép đo
+
+rollback:
+  threshold_positions: 5
+  sustained_days: 7
+  to: v1.0
+
+baseline: ""             # YYYY-MM-DD của phép đo baseline

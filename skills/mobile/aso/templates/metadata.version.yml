@@ -1,0 +1,21 @@
+# Một version = một file. KHÔNG sửa file đã ship — tạo version mới.
+# Luôn quote mọi chuỗi: title có dấu ':' sẽ làm vỡ YAML nếu không quote.
+version: v1.0
+platform: ios              # ios | android
+shipped_in: "1.0.0"
+live_from: 2026-01-01
+rollback_baseline: true
+# rollback_to: v1.0
+intent: "một câu: version này cố đạt điều gì"
+
+# iOS: title 30 / subtitle 30 / keywords 100
+locales:
+  en-US:
+    title:    "My App Name"
+    subtitle: "What it does in six words"
+    keywords: "word,another,third"
+
+# Android dùng bộ trường khác — KHÔNG có field keywords:
+#   title              30
+#   short_description  80    (trọng số cao hơn long_description)
+#   full_description   4000  (CÓ được index, khác hẳn iOS)
