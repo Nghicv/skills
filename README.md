@@ -67,6 +67,7 @@ repo này — xem danh sách và cách cài lại ở [THIRD-PARTY.md](THIRD-PAR
 ### tools
 
 - [`reddit-fetch`](skills/tools/reddit-fetch/SKILL.md) — fetch nội dung Reddit qua Gemini CLI hoặc curl JSON API khi bị 403/block.
+- [`git-timesheet`](skills/tools/git-timesheet/SKILL.md) — điền file timesheet / % effort theo dự án từ commit trong GitHub org, append vào .xlsx không làm hỏng workbook.
 - [`skill-config`](skills/tools/skill-config/SKILL.md) — bật/tắt/liệt kê Claude Code skills theo nhóm và scope. *(`.claude-only`)*
 
 ### android · ios · backend · frontend

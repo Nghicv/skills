@@ -1,0 +1,50 @@
+{
+  "github": {
+    "org": "example-org",
+    "author_emails": ["alice@example.com"],
+    "author_names": [],
+    "repos": null,
+    "ssh": true
+  },
+  "timezone_offset_hours": 7,
+  "projects": {
+    "app-a-android": "APP_A",
+    "app-a-ios": "APP_A",
+    "app-b-web": "APP_B",
+    "internal-tools": "SHARED",
+    "sandbox-experiments": null
+  },
+  "project_names": {
+    "APP_A": "App A: Photo Editor",
+    "APP_B": "App B: Calendar",
+    "SHARED": "Internal tooling"
+  },
+  "hours": { "per_day": 8, "floor_workdays": 5 },
+  "work_types": {
+    "rules": {
+      "Bug": ["fix", "hotfix", "bug", "revert"],
+      "Feature": ["feat", "add", "implement", "support"],
+      "Maintenance": ["refactor", "chore", "bump", "update", "ci", "build", "release", "docs", "test", "perf", "style"],
+      "Research/R&D": ["research", "spike", "poc", "experiment"]
+    },
+    "default": "Feature"
+  },
+  "status": { "done": "Done", "in_progress": "Doing" },
+  "note_format": "{commits} commits / {days} days · {repos}",
+  "month_format": "%m",
+  "sheet": {
+    "file": "~/Downloads/effort-tracking.xlsx",
+    "name": "DATA",
+    "first_data_row": 3,
+    "append_from_row": 0,
+    "style_row": null,
+    "person": "Alice Example",
+    "role": "Dev",
+    "tsv_date_format": "%d/%m/%Y",
+    "columns": {
+      "month": "A", "start": "B", "end": "C", "project": "D", "project_name": "E",
+      "work_type": "F", "person": "G", "role": "H", "hours": "K", "percent": "L",
+      "status": "M", "note": "N"
+    }
+  }
+}
