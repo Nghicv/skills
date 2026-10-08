@@ -3,7 +3,7 @@
 
     python3 measure_keywords.py <repo>/aso [--date YYYY-MM-DD] [--force]
 """
-import argparse, csv, datetime, json, os, sys, time
+import argparse, csv, datetime, json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import load, search
 
@@ -22,7 +22,10 @@ def current_version(aso_dir):
         with open(os.path.join(mdir, fn), encoding="utf-8") as f:
             m = yaml.safe_load(f) or {}
         lf = m.get("live_from")
-        if lf and (best[0] is None or str(lf) > str(best[0])):
+        # "TBD"/"" = chưa lên store; chỉ nhận ngày thật, nếu không bản nháp sẽ chiếm nhãn
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(lf or "")):
+            continue
+        if (best[0] is None or str(lf) > str(best[0])):
             best = (str(lf), m.get("version") or fn.rsplit(".", 1)[0])
     return best[1]
 
