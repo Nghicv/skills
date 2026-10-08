@@ -21,15 +21,25 @@ Start from `references/config.example.json`.
    identity that must NOT be counted), timezone, target sheet and column
    letters. Inspect the workbook first (header row, hidden columns, any
    "append from row N / do not edit old rows" note) — do not guess the layout.
-2. **Find where the log stops** (never re-log existing periods):
+2. **Choose the period** → `--since` / `--until` (both inclusive, YYYY-MM-DD):
+
+   | User says | since → until |
+   |---|---|
+   | nothing / "tiếp" / "đến nay" | day after `last-end` (below) → today |
+   | "từ tháng 8 đến nay" | 1st of that month → today |
+   | "tháng 9" | 1st → last day of that month |
+   | "tuần trước" / "last week" | that Monday → Sunday |
+   | explicit dates | as given |
+
    ```bash
    python3 {skill_dir}/scripts/xlsx_append.py last-end --config <cfg>
    ```
-   Use the day after as `--since`, unless the user asked for a range that is
-   not yet logged.
+   Always run `last-end`. If the requested range overlaps what is already
+   logged, do NOT append — show the table and offer `tsv` output so the user
+   can compare or overwrite by hand. Append only the part after `last-end`.
 3. **Collect commits** (all branches, deduped; `gh` must be logged in):
    ```bash
-   python3 {skill_dir}/scripts/collect_commits.py --config <cfg> --since <YYYY-MM-DD> --out commits.tsv
+   python3 {skill_dir}/scripts/collect_commits.py --config <cfg> --since <start> --until <end> --out commits.tsv
    ```
    First run clones bare treeless mirrors into `~/.cache/git-timesheet/` and
    takes a couple of minutes; later runs only fetch. Exit code 1 = some repo
@@ -37,7 +47,7 @@ Start from `references/config.example.json`.
 4. **Build rows:**
    ```bash
    python3 {skill_dir}/scripts/build_rows.py --config <cfg> --commits commits.tsv \
-     --since <start> --until <today> --out rows.json
+     --since <start> --until <end> --out rows.json
    ```
    Exit 2 lists repos with no project mapping → ask the user which project
    each belongs to (or `null` to exclude), add to the config, re-run. Show the

@@ -10,7 +10,7 @@ run is one `git fetch` per repo and `git log --all` does the filtering.
 A commit reachable from several branches is reported once.
 Output TSV: repo<TAB>sha<TAB>author_date_iso<TAB>author_email<TAB>subject
 """
-import argparse, json, os, subprocess, sys
+import argparse, datetime as dt, json, os, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 def run(cmd, **kw):
@@ -59,18 +59,24 @@ def main():
         synced = list(ex.map(lambda r: sync(r, cache, cfg.get("ssh", True)), repos))
     failed = [s for s in synced if s[2] != 0]
 
+    # +1 day: author dates carry their own timezone; build_rows does the exact cut
+    until_slack = (dt.date.fromisoformat(a.until) + dt.timedelta(days=1)).isoformat() if a.until else None
     seen, rows = set(), []
     fmt = "%H%x1f%aI%x1f%ae%x1f%an%x1f%s"
     for name, path, code, _ in synced:
         if code != 0:
             continue
+        # git --since/--until filter on COMMITTER date; a rebased or cherry-picked
+        # commit keeps its original AUTHOR date but gets a newer committer date.
+        # --since is safe (committer >= author); the upper bound is applied on
+        # the author date below so such commits are not lost.
         cmd = ["git", "-C", path, "log", "--all", f"--since={a.since}T00:00:00", f"--format={fmt}"]
-        if a.until:
-            cmd.append(f"--until={a.until}T23:59:59")
         out = run(cmd)
         for line in out.stdout.splitlines():
             sha, date, email, author, subject = line.split("\x1f", 4)
             if sha in seen or not (email.lower() in emails or author in names):
+                continue
+            if until_slack and date[:10] > until_slack:  # exact cut: build_rows (in config tz)
                 continue
             seen.add(sha)
             rows.append((name, sha, date, email, subject.replace("\t", " ")))
