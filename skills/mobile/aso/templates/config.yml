@@ -23,4 +23,8 @@ rollback:
   sustained_days: 7
   to: v1.0
 
-baseline: ""             # YYYY-MM-DD của phép đo baseline
+baseline: ""
+
+# Bộ screenshot (ảnh không vào git) lưu ở đây bằng scripts/drive_sync.py
+screenshots:
+  drive_folder: ""       # id thư mục Google Drive (phần cuối của link .../folders/<id>)             # YYYY-MM-DD của phép đo baseline

@@ -29,9 +29,55 @@ discover it after the set is live in twelve locales.
 
 ## Images stay out of git
 
-Store binaries outside the repo (design tool, object storage, shared drive). The manifest
-holds path, checksum, source and IP status. A repo that accumulated screenshot binaries
-needed a history rewrite to shed ~380MB.
+Store binaries outside the repo. The manifest holds path, checksum, source and IP status. A
+repo that accumulated screenshot binaries needed a history rewrite to shed ~380MB, and a set
+that lived only in an `exports/` folder was lost and had to be pulled back from Apple's CDN.
+
+### Archive every release to Google Drive
+
+Archive a **release folder** (the immutable set that was or will be uploaded, with its
+manifest), never a working `exports/` folder that is overwritten on every export.
+
+| Moment | Archive |
+|---|---|
+| A release folder is created | yes — the export it came from can vanish |
+| A set is uploaded to App Store Connect / Play | yes, after updating its manifest status |
+| A PPO treatment is promoted or stopped | re-run to push the updated manifest |
+
+```bash
+S="$(ls -d ~/.claude/skills/aso/scripts ~/.agents/skills/aso/scripts 2>/dev/null | head -1)"
+python3 $S/drive_sync.py aso/ store-screenshots/releases/v4-light --dry-run
+python3 $S/drive_sync.py aso/ store-screenshots/releases/v4-light store-screenshots/releases/v4-dark
+```
+
+The folder id comes from `screenshots.drive_folder` in `config.yml`. Each release becomes a
+Drive folder of the same name with its tree mirrored. Re-running is safe: files with the same
+MD5 are skipped, changed ones are overwritten in place (links keep working), nothing on Drive
+is deleted. The last line prints the folder link; give it to the user. Run the per-locale image
+count first: Drive will happily store a set that is missing images.
+
+### Drive login (once per machine)
+
+The script borrows gcloud's login, and a normal gcloud login has no Drive access. When it exits
+with "no Drive scope" or "no usable login", stop and give the user these steps; only they can
+do them, it is a browser sign-in.
+
+1. In the Claude Code prompt, type this and press Enter (the leading `!` runs it in the session;
+   `CLOUDSDK_PYTHON` is only needed where gcloud's bundled Python is broken):
+   ```
+   ! CLOUDSDK_PYTHON=/opt/homebrew/bin/python3.14 gcloud auth login --enable-gdrive-access
+   ```
+2. A browser tab opens on Google sign-in. If none opens, copy the long
+   `https://accounts.google.com/...` link the terminal prints into a browser.
+3. Pick the Google account that can **edit** the Drive folder (its owner, or shared as Editor).
+4. On "Google Cloud SDK wants to access your Google Account", tick every box, including
+   "See, edit, create and delete all of your Google Drive files", then press **Continue**.
+5. The tab says "You are now authenticated with the gcloud CLI!" and the terminal prints
+   `You are now logged in as [email]`. The user tells you it is done.
+
+That account becomes gcloud's active account. If gcloud normally runs as another account
+(Firebase, GA4 impersonation), switch back with `gcloud config set account <usual>` and pass
+the Drive one to the script with `--account <email>`. `gcloud auth list` shows who is logged in.
 
 ## Product Page Optimization (PPO)
 

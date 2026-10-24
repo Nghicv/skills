@@ -59,7 +59,8 @@ Copy starting files from `templates/`. Bootstrap a new app with
 `scripts/init_app.py <repo>/aso --adam-id <id>`.
 
 **Screenshot images never go in git.** `manifest.yml` holds paths, checksums and IP
-provenance only; the binaries live outside the repo.
+provenance only; the binaries live outside the repo, archived to the app's Google Drive folder
+with `drive_sync.py` (setup and login: `references/screenshots-ppo.md`).
 
 ## Scripts
 
@@ -72,6 +73,7 @@ python3 $S/measure_keywords.py  aso/           # rank iOS
 python3 $S/measure_play.py      aso/           # rank Android
 python3 $S/compare_measures.py  aso/           # cả hai, tách theo nền tảng
 python3 $S/validate_metadata.py aso/metadata/v2.0.yml
+python3 $S/drive_sync.py aso/ <release_dir> --dry-run    # lưu bộ ảnh lên Drive
 ```
 
 `rank-history.csv` has a `platform` column; iOS and Android rows live in one file and are
