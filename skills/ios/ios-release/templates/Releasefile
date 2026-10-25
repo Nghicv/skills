@@ -121,6 +121,17 @@ def require_clean_tree
   UI.user_error!("Commit or stash first, the build must match a commit:\n#{dirty.join}") unless dirty.empty?
 end
 
+# The tree was clean before the build, so any tracked change now came from it:
+# the temporary signing in project.pbxproj, and build phases that regenerate
+# tracked files (R.swift rewrites R.generated.swift for the Release xcconfig).
+def restore_build_changes
+  changed = sh("git", "-C", RELEASE_ROOT, "diff", "--name-only", log: false)
+            .lines.map(&:strip).reject { |path| path.empty? || path.end_with?(".DS_Store") }
+  return if changed.empty?
+  sh("git", "-C", RELEASE_ROOT, "checkout", "--", *changed, log: false)
+  UI.message("Restored files the build touched: #{changed.join(', ')}")
+end
+
 # Xcode Cloud has no wrapper in spaceship; call the REST API with the same token.
 def asc_request(method, path, body = nil)
   release_api_key
@@ -246,8 +257,6 @@ platform :ios do
     match(type: "appstore", app_identifier: RELEASE[:targets].values, api_key: release_api_key, readonly: true)
 
     project = File.join(RELEASE_ROOT, RELEASE[:project])
-    pbxproj = File.join(project, "project.pbxproj")
-    original = File.read(pbxproj)
     begin
       # Xcode Cloud needs the project on automatic signing, so manual signing is
       # applied only for this build; xcargs would leak into the Pods targets.
@@ -272,7 +281,7 @@ platform :ios do
         }
       )
     ensure
-      File.write(pbxproj, original)
+      restore_build_changes
     end
 
     xcarchive = lane_context[SharedValues::XCODEBUILD_ARCHIVE]

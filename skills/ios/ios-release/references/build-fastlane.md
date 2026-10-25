@@ -12,7 +12,9 @@ bundle exec fastlane ios beta upload:false   # build and sign only: the signing 
    app and every extension get the same `CFBundleVersion`.
 3. `match readonly:true` installs the distribution cert and one App Store profile per bundle id in `RELEASE[:targets]`.
 4. Switches each shipped target to manual signing with its `match AppStore <bundle id>` profile, for the Release
-   configuration only, and restores `project.pbxproj` afterwards.
+   configuration only. Afterwards every tracked file the build changed is restored: the signing edit, and files
+   that build phases regenerate (R.swift rewrites `R.generated.swift` for the Release xcconfig). Without that the
+   next `beta` refuses the dirty tree.
 5. `build_app` archives into `build/fastlane/` with matching `export_options`.
 6. Uploads the archive's dSYMs to Crashlytics (before upload, so a processing failure still leaves symbols).
 7. `upload_to_testflight` without waiting, then waits for `VALID` itself and adds the build to every internal group.
