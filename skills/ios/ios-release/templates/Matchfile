@@ -1,0 +1,6 @@
+# Encrypted cert/profile repo shared by the team's apps (match splits it by bundle id).
+# The passphrase is MATCH_PASSWORD in fastlane/.env.
+git_url("git@github.com:OWNER/CERTS_REPO.git")   # private repo
+storage_mode("git")
+type("appstore")
+team_id("TEAM_ID")

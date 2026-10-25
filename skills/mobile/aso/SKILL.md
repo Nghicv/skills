@@ -1,6 +1,6 @@
 ---
 name: aso
-description: Use when working on App Store Optimization for an iOS or Android app - picking keywords for an app that is not on the store yet, writing or changing store metadata (title/subtitle/keywords/short description), checking where keywords currently rank, explaining why a keyword dropped, or planning the next metadata version. Triggers on ASO, App Store Optimization, keyword research, keyword ranking, app metadata, title/subtitle/keywords, App Store Connect, Google Play Console, product page optimization, PPO, store listing experiments, short description, screenshot localization, "tối ưu App Store", "nghiên cứu từ khoá", "đo ranking", "app tụt hạng".
+description: Use when working on App Store Optimization for an iOS or Android app - picking keywords for an app that is not on the store yet, writing or changing store metadata (title/subtitle/keywords/short description), checking where keywords currently rank, explaining why a keyword dropped, or planning the next metadata version. Triggers on ASO, App Store Optimization, keyword research, keyword ranking, app metadata, title/subtitle/keywords, store listing text, Google Play Console, product page optimization, PPO, store listing experiments, short description, screenshot localization, "tối ưu App Store", "nghiên cứu từ khoá", "đo ranking", "app tụt hạng".
 ---
 
 # ASO
@@ -102,6 +102,8 @@ top 200". Say that plainly in any Android report; do not imply iOS-grade precisi
 - **Compare in two directions.** vs baseline answers "has this version helped overall"; vs
   the previous measurement answers "what moved recently". Different questions — report both.
 - **Never hand-edit `rank-history.csv`.** It is generated from `measure/<date>.json`.
+- **Builds, TestFlight, What's New, review submission and release belong to `ios-release`.** Here: store text,
+  keywords, screenshots, ranks. A release asks this skill for its preflight checks; this skill never submits.
 - **Do not write to App Store Connect or Apple Ads without explicit approval.** Produce a
   review document; let the human click. Reading is fine.
 - **Record failures in CHANGELOG.md**, not just diffs. "We tried X, it failed, here is why"

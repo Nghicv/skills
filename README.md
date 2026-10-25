@@ -70,6 +70,10 @@ repo này — xem danh sách và cách cài lại ở [THIRD-PARTY.md](THIRD-PAR
 - [`git-timesheet`](skills/tools/git-timesheet/SKILL.md) — điền file timesheet / % effort theo dự án từ commit trong GitHub org, append vào .xlsx không làm hỏng workbook.
 - [`skill-config`](skills/tools/skill-config/SKILL.md) — bật/tắt/liệt kê Claude Code skills theo nhóm và scope. *(`.claude-only`)*
 
-### android · ios · backend · frontend
+### ios
+
+- [`ios-release`](skills/ios/ios-release/SKILL.md) — phát hành iOS: build fastlane (match/gym) hoặc Xcode Cloud, TestFlight + tester group, dSYM, What's New, submit review, release type/phased release.
+
+### android · backend · frontend
 
 *(trống — chờ skill mới)*

@@ -1,0 +1,421 @@
+# Template from the ios-release skill. Fill RELEASE, copy to fastlane/, add
+# `import "Releasefile"` to the Fastfile.
+#
+# Release lanes: build → TestFlight → dSYMs → What's New → review → release.
+# Imported by Fastfile. Store text, keywords and screenshots belong to the ASO
+# lanes there; nothing here uploads metadata other than What's New.
+#
+#   bundle exec fastlane ios release_status
+#   bundle exec fastlane ios new_version version:1.8.0 [apply:true]
+#   bundle exec fastlane ios beta                      # local build (match + gym) → TestFlight
+#   bundle exec fastlane ios beta upload:false         # build and sign only
+#   bundle exec fastlane ios beta_cloud [branch:main]  # Xcode Cloud build → TestFlight
+#   bundle exec fastlane ios testers build:72          # add a build to the internal groups
+#   bundle exec fastlane ios dsym build:72             # redo the Crashlytics upload
+#   bundle exec fastlane ios whats_new [apply:true]
+#   bundle exec fastlane ios submit build:72 release:manual|phased|auto [replace:true] [apply:true]
+#   bundle exec fastlane ios release_version           # manual release of an approved version
+#   bundle exec fastlane ios phased action:pause|resume|complete
+#   bundle exec fastlane ios certs                     # once per app: create profiles in match
+#
+# Every lane that writes to App Store Connect prints its plan and stops unless
+# apply:true (beta/beta_cloud upload by design and need no flag).
+
+require "json"
+require "net/http"
+require "timeout"
+require "tmpdir"
+
+RELEASE = {
+  app_identifier: "com.example.app",
+  workspace: "App.xcworkspace",          # or the .xcodeproj when there are no Pods
+  project: "App.xcodeproj",
+  scheme: "App Production",
+  configuration: "Release",
+  # Targets embedded in the shipped app → bundle id in the Release configuration.
+  targets: {
+    "App" => "com.example.app",
+    # "WidgetExtension" => "com.example.app.widget",
+  },
+  key_env: "APP_ASC",                    # reads APP_ASC_KEY_ID / _ISSUER_ID / _KEY_PATH
+  xcode_cloud_workflow: "Testflight",    # only for beta_cloud
+  upload_symbols: "Pods/FirebaseCrashlytics/upload-symbols",
+}.freeze
+
+RELEASE_ROOT = File.expand_path("..", __dir__)
+RELEASE_OUTPUT = File.join(RELEASE_ROOT, "build/fastlane")
+RELEASE_NOTES_DIR = File.join(__dir__, "metadata")
+WHATS_NEW_LIMIT = 4000
+IOS = Spaceship::ConnectAPI::Platform::IOS
+
+def release_api_key
+  prefix = RELEASE[:key_env]
+  %w[KEY_ID ISSUER_ID KEY_PATH].each do |part|
+    UI.user_error!("Missing #{prefix}_#{part}: cp fastlane/.env.example fastlane/.env") if ENV["#{prefix}_#{part}"].to_s.empty?
+  end
+  @release_api_key ||= app_store_connect_api_key(
+    key_id: ENV["#{prefix}_KEY_ID"],
+    issuer_id: ENV["#{prefix}_ISSUER_ID"],
+    key_filepath: File.expand_path(ENV["#{prefix}_KEY_PATH"]),
+    in_house: false
+  )
+end
+
+def release_app
+  release_api_key
+  @release_app ||= Spaceship::ConnectAPI::App.find(RELEASE[:app_identifier]) ||
+                   UI.user_error!("App #{RELEASE[:app_identifier]} not visible to this API key")
+end
+
+def apply?(options)
+  options[:apply].to_s == "true"
+end
+
+def find_build(number)
+  build = Spaceship::ConnectAPI::Build.all(app_id: release_app.id, build_number: number.to_s, limit: 1).first
+  build || UI.user_error!("No build #{number} on App Store Connect")
+end
+
+# Xcode Cloud and local uploads share one build-number sequence on App Store
+# Connect, so the next local number comes from there, not from the project.
+def next_build_number
+  numbers = Spaceship::ConnectAPI::Build.all(app_id: release_app.id, limit: 50).map { |b| b.version.to_i }
+  (numbers.max || 0) + 1
+end
+
+def wait_for_valid_build(number, timeout: 60 * 60)
+  deadline = Time.now + timeout
+  loop do
+    build = Spaceship::ConnectAPI::Build.all(app_id: release_app.id, build_number: number.to_s, limit: 1).first
+    state = build&.processing_state
+    return build if state == "VALID"
+    UI.user_error!("Build #{number} processing ended #{state}") if %w[FAILED INVALID].include?(state)
+    UI.user_error!("Build #{number} still #{state || 'not visible'} after #{timeout / 60} min") if Time.now > deadline
+    UI.message("Build #{number}: #{state || 'not visible yet'}, checking again in 60 s")
+    sleep(60)
+  end
+end
+
+# Builds uploaded by Xcode Cloud skip the groups' automatic distribution and sit
+# in READY_FOR_BETA_TESTING until added; adding a build that is already there is a no-op.
+def add_to_internal_groups(build)
+  groups = release_app.get_beta_groups.select(&:is_internal_group)
+  UI.user_error!("No internal TestFlight group; create one in App Store Connect") if groups.empty?
+  build.add_beta_groups(beta_groups: groups)
+  UI.success("Build #{build.version} → #{groups.map(&:name).join(', ')}")
+end
+
+def upload_dsyms(dsyms_dir, gsp)
+  UI.user_error!("No dSYMs at #{dsyms_dir}") unless File.directory?(dsyms_dir)
+  sh(File.join(RELEASE_ROOT, RELEASE[:upload_symbols]), "-gsp", gsp, "-p", "ios", dsyms_dir)
+end
+
+def app_gsp(xcarchive)
+  Dir[File.join(xcarchive, "Products/Applications/*.app/GoogleService-Info.plist")].first ||
+    UI.user_error!("No GoogleService-Info.plist inside #{xcarchive}")
+end
+
+def require_clean_tree
+  dirty = sh("git", "-C", RELEASE_ROOT, "status", "--porcelain", log: false)
+          .lines.reject { |line| line.strip.end_with?(".DS_Store") }
+  UI.user_error!("Commit or stash first, the build must match a commit:\n#{dirty.join}") unless dirty.empty?
+end
+
+# Xcode Cloud has no wrapper in spaceship; call the REST API with the same token.
+def asc_request(method, path, body = nil)
+  release_api_key
+  token = Spaceship::ConnectAPI.token
+  token.refresh! if token.expired?
+  uri = URI(path.start_with?("http") ? path : "https://api.appstoreconnect.apple.com#{path}")
+  request = Net::HTTP.const_get(method.capitalize).new(uri)
+  request["Authorization"] = "Bearer #{token.text}"
+  request["Content-Type"] = "application/json"
+  request.body = body.to_json if body
+  response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+  UI.user_error!("#{method} #{path} → #{response.code}: #{response.body.to_s[0, 800]}") if response.code.to_i >= 400
+  response.body.to_s.empty? ? {} : JSON.parse(response.body)
+end
+
+def xcode_cloud_workflows
+  product = asc_request("GET", "/v1/ciProducts?filter[app]=#{release_app.id}")["data"].first ||
+            UI.user_error!("No Xcode Cloud product for this app")
+  [product, asc_request("GET", "/v1/ciProducts/#{product['id']}/workflows")["data"]]
+end
+
+def xcode_cloud_run(number)
+  _, workflows = xcode_cloud_workflows
+  workflows.each do |workflow|
+    runs = asc_request("GET", "/v1/ciWorkflows/#{workflow['id']}/buildRuns?limit=50")["data"]
+    run = runs.find { |r| r["attributes"]["number"] == number.to_i }
+    return run if run
+  end
+  nil
+end
+
+def upload_xcode_cloud_dsyms(run)
+  action = asc_request("GET", "/v1/ciBuildRuns/#{run['id']}/actions")["data"].find { |a| a["attributes"]["actionType"] == "ARCHIVE" }
+  artifacts = asc_request("GET", "/v1/ciBuildActions/#{action['id']}/artifacts")["data"]
+  archive = artifacts.find { |a| a["attributes"]["fileType"] == "ARCHIVE" } || UI.user_error!("Run has no archive artifact")
+  url = asc_request("GET", "/v1/ciArtifacts/#{archive['id']}")["data"]["attributes"]["downloadUrl"]
+  Dir.mktmpdir do |tmp|
+    sh("curl", "-sfL", "-o", "#{tmp}/archive.zip", url, log: false)
+    sh("unzip", "-q", "#{tmp}/archive.zip", "-d", tmp, log: false)
+    xcarchive = Dir["#{tmp}/**/*.xcarchive"].first
+    upload_dsyms(File.join(xcarchive, "dSYMs"), app_gsp(xcarchive))
+  end
+end
+
+def local_archive(number)
+  Dir[File.expand_path("~/Library/Developer/Xcode/Archives/**/*.xcarchive")].find do |xcarchive|
+    plist = File.join(xcarchive, "Info.plist")
+    next false unless File.exist?(plist)
+    info = JSON.parse(sh("plutil", "-convert", "json", "-o", "-", plist, log: false))
+    props = info["ApplicationProperties"] || {}
+    props["CFBundleIdentifier"] == RELEASE[:app_identifier] && props["CFBundleVersion"] == number.to_s
+  end
+end
+
+def release_notes
+  Dir[File.join(RELEASE_NOTES_DIR, "*/release_notes.txt")].sort.to_h do |path|
+    [File.basename(File.dirname(path)), File.read(path, encoding: "UTF-8").strip]
+  end
+end
+
+def edit_version
+  release_app.get_edit_app_store_version(platform: IOS) ||
+    UI.user_error!("No editable App Store version; create it in App Store Connect first")
+end
+
+def print_version(version)
+  build = version.build
+  UI.message("Version #{version.version_string}: #{version.app_version_state || version.app_store_state}, " \
+             "release #{version.release_type}, build #{build ? build.version : '—'}")
+end
+
+platform :ios do
+  desc "Read-only: recent builds with TestFlight state, the version in progress, review submissions"
+  lane :release_status do
+    Spaceship::ConnectAPI::Build.all(app_id: release_app.id, limit: 5).first(5).each do |build|
+      detail = build.build_beta_detail
+      UI.message("Build #{build.version} (#{build.app_version}) #{build.processing_state}, " \
+                 "internal #{detail&.internal_build_state}, external #{detail&.external_build_state}")
+    end
+    release_app.get_beta_groups.each do |group|
+      UI.message("Group #{group.name}: #{group.is_internal_group ? 'internal' : 'external'}, " \
+                 "auto distribution #{group.has_access_to_all_builds}")
+    end
+    version = release_app.get_edit_app_store_version(platform: IOS)
+    version ? print_version(version) : UI.message("No version in progress")
+    live = release_app.get_live_app_store_version(platform: IOS)
+    UI.message("Live: #{live.version_string}") if live
+    release_app.get_review_submissions(filter: { platform: IOS }, limit: 3).first(3).each do |submission|
+      UI.message("Review submission #{submission.id}: #{submission.state} #{submission.submitted_date}")
+    end
+  end
+
+  desc "Set MARKETING_VERSION in the project and create the App Store version. version:x.y.z, apply:true to create it on ASC"
+  lane :new_version do |options|
+    target = options[:version].to_s
+    UI.user_error!("Pass version:x.y.z") unless target.match?(/\A\d+\.\d+(\.\d+)?\z/)
+    live = release_app.get_live_app_store_version(platform: IOS)
+    UI.user_error!("#{target} is already live; pick a higher version") if live && Gem::Version.new(target) <= Gem::Version.new(live.version_string)
+    pbxproj = File.join(RELEASE_ROOT, RELEASE[:project], "project.pbxproj")
+    # The app and its extensions share the most common value; test targets keep their own.
+    current = File.read(pbxproj).scan(/MARKETING_VERSION = ([\d.]+);/).flatten.tally.max_by(&:last).first
+    File.write(pbxproj, File.read(pbxproj).gsub("MARKETING_VERSION = #{current};", "MARKETING_VERSION = #{target};")) unless current == target
+    UI.success("MARKETING_VERSION #{current} → #{target} (commit it before building)")
+
+    existing = release_app.get_edit_app_store_version(platform: IOS)
+    next UI.message("App Store version #{existing.version_string} already in progress") if existing&.version_string == target
+    UI.user_error!("Version #{existing.version_string} is in progress; finish or rename it first") if existing
+    next UI.important("Dry run: would create App Store version #{target}. Re-run with apply:true") unless apply?(options)
+
+    release_app.ensure_version!(target, platform: IOS)
+    UI.success("App Store version #{target} created")
+  end
+
+  desc "Once per app: create or renew App Store profiles for every target in the match repo"
+  lane :certs do
+    match(type: "appstore", app_identifier: RELEASE[:targets].values, api_key: release_api_key, readonly: false)
+  end
+
+  desc "Local build: match → gym → dSYMs → TestFlight → internal groups. upload:false to build only"
+  lane :beta do |options|
+    require_clean_tree
+    number = options[:build] || next_build_number
+    match(type: "appstore", app_identifier: RELEASE[:targets].values, api_key: release_api_key, readonly: true)
+
+    project = File.join(RELEASE_ROOT, RELEASE[:project])
+    pbxproj = File.join(project, "project.pbxproj")
+    original = File.read(pbxproj)
+    begin
+      # Xcode Cloud needs the project on automatic signing, so manual signing is
+      # applied only for this build; xcargs would leak into the Pods targets.
+      RELEASE[:targets].each do |target, bundle_id|
+        update_code_signing_settings(
+          path: project, targets: [target], build_configurations: [RELEASE[:configuration]],
+          use_automatic_signing: false, team_id: CredentialsManager::AppfileConfig.try_fetch_value(:team_id),
+          code_sign_identity: "Apple Distribution", bundle_identifier: bundle_id,
+          profile_name: "match AppStore #{bundle_id}"
+        )
+      end
+      build_app(
+        workspace: File.join(RELEASE_ROOT, RELEASE[:workspace]),
+        scheme: RELEASE[:scheme],
+        configuration: RELEASE[:configuration],
+        export_method: "app-store",
+        output_directory: RELEASE_OUTPUT,
+        xcargs: "CURRENT_PROJECT_VERSION=#{number}",
+        export_options: {
+          signingStyle: "manual",
+          provisioningProfiles: RELEASE[:targets].values.to_h { |id| [id, "match AppStore #{id}"] },
+        }
+      )
+    ensure
+      File.write(pbxproj, original)
+    end
+
+    xcarchive = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
+    upload_dsyms(File.join(xcarchive, "dSYMs"), app_gsp(xcarchive))
+    next UI.success("Built #{lane_context[SharedValues::IPA_OUTPUT_PATH]} (build #{number}), not uploaded") if options[:upload].to_s == "false"
+
+    upload_to_testflight(api_key: release_api_key, ipa: lane_context[SharedValues::IPA_OUTPUT_PATH],
+                         skip_waiting_for_build_processing: true)
+    add_to_internal_groups(wait_for_valid_build(number))
+  end
+
+  desc "Xcode Cloud build of a pushed branch → wait → internal groups → dSYMs. branch: defaults to main"
+  lane :beta_cloud do |options|
+    branch = options[:branch] || "main"
+    product, workflows = xcode_cloud_workflows
+    workflow = workflows.find { |w| w["attributes"]["name"] == RELEASE[:xcode_cloud_workflow] } ||
+               UI.user_error!("No Xcode Cloud workflow named #{RELEASE[:xcode_cloud_workflow]}")
+    repo = asc_request("GET", "/v1/ciProducts/#{product['id']}/primaryRepositories")["data"].first
+    refs = asc_request("GET", "/v1/scmRepositories/#{repo['id']}/gitReferences?limit=200")["data"]
+    ref = refs.find { |r| r["attributes"]["canonicalName"] == "refs/heads/#{branch}" } ||
+          UI.user_error!("Branch #{branch} is not on the Xcode Cloud repository; push it first")
+
+    run = asc_request("POST", "/v1/ciBuildRuns", { data: { type: "ciBuildRuns", relationships: {
+      workflow: { data: { type: "ciWorkflows", id: workflow["id"] } },
+      sourceBranchOrTag: { data: { type: "scmGitReferences", id: ref["id"] } },
+    } } })["data"]
+    number = run["attributes"]["number"]
+    UI.important("Xcode Cloud run ##{number} started on #{branch} (cannot be cancelled from the API)")
+    loop do
+      attributes = asc_request("GET", "/v1/ciBuildRuns/#{run['id']}")["data"]["attributes"]
+      if attributes["executionProgress"] == "COMPLETE"
+        UI.user_error!("Xcode Cloud run ##{number} ended #{attributes['completionStatus']}") unless attributes["completionStatus"] == "SUCCEEDED"
+        break
+      end
+      sleep(60)
+    end
+    add_to_internal_groups(wait_for_valid_build(number))
+    upload_xcode_cloud_dsyms(run)
+  end
+
+  desc "Add an existing build to every internal TestFlight group. build:N"
+  lane :testers do |options|
+    add_to_internal_groups(find_build(options[:build] || UI.user_error!("Pass build:N")))
+  end
+
+  desc "Upload a build's dSYMs to Crashlytics from its local archive or its Xcode Cloud run. build:N"
+  lane :dsym do |options|
+    number = options[:build] || UI.user_error!("Pass build:N")
+    if (xcarchive = local_archive(number))
+      upload_dsyms(File.join(xcarchive, "dSYMs"), app_gsp(xcarchive))
+    elsif (run = xcode_cloud_run(number))
+      upload_xcode_cloud_dsyms(run)
+    else
+      UI.user_error!("Build #{number}: no local archive and no Xcode Cloud run")
+    end
+  end
+
+  desc "Write fastlane/metadata/<locale>/release_notes.txt to What's New of the version in progress. apply:true to write"
+  lane :whats_new do |options|
+    notes = release_notes
+    UI.user_error!("No fastlane/metadata/*/release_notes.txt") if notes.empty?
+    too_long = notes.select { |_, text| text.length > WHATS_NEW_LIMIT }
+    UI.user_error!("Over #{WHATS_NEW_LIMIT} characters: #{too_long.keys.join(', ')}") unless too_long.empty?
+
+    version = edit_version
+    localizations = version.get_app_store_version_localizations.to_h { |l| [l.locale, l] }
+    missing = localizations.keys - notes.keys
+    UI.important("No release_notes.txt for #{missing.join(', ')}; their What's New stays as is") unless missing.empty?
+    changes = notes.select { |locale, text| localizations[locale] && localizations[locale].whats_new.to_s.strip != text }
+    UI.important("Not on the store version, skipped: #{(notes.keys - localizations.keys).join(', ')}") unless (notes.keys - localizations.keys).empty?
+    next UI.success("What's New of #{version.version_string} is already up to date") if changes.empty?
+
+    changes.each { |locale, text| UI.message("[#{locale}] #{text.lines.first.to_s.strip[0, 80]}…") }
+    next UI.important("Dry run: #{changes.size} locale(s) would change. Re-run with apply:true") unless apply?(options)
+
+    changes.each { |locale, text| localizations[locale].update(attributes: { whats_new: text }) }
+    UI.success("What's New updated for #{changes.keys.join(', ')}")
+  end
+
+  desc "Attach a build and submit for review. build:N release:manual|phased|auto [replace:true] apply:true"
+  lane :submit do |options|
+    number = options[:build] || UI.user_error!("Pass build:N")
+    mode = options[:release].to_s
+    UI.user_error!("Pass release:manual, release:phased or release:auto; there is no default") unless %w[manual phased auto].include?(mode)
+
+    version = edit_version
+    build = find_build(number)
+    UI.user_error!("Build #{number} is #{build.processing_state}, not VALID") unless build.processing_state == "VALID"
+    UI.user_error!("Build #{number} is version #{build.app_version}, store version is #{version.version_string}") unless build.app_version == version.version_string
+    in_review = release_app.get_in_progress_review_submission(platform: IOS)
+    if in_review && options[:replace].to_s != "true"
+      UI.user_error!("Submission #{in_review.id} is #{in_review.state}. Pass replace:true to cancel it and resubmit")
+    end
+
+    print_version(version)
+    UI.important("Plan: #{in_review ? "cancel #{in_review.id}, " : ''}attach build #{number}, release #{mode}, submit #{version.version_string}")
+    UI.important("auto = live the moment Apple approves, with no QC window") if mode == "auto"
+    next UI.important("Dry run. Re-run with apply:true") unless apply?(options)
+
+    if in_review
+      in_review.cancel_submission
+      Timeout.timeout(15 * 60) do
+        sleep(15) until Spaceship::ConnectAPI::ReviewSubmission.get(review_submission_id: in_review.id).state == "COMPLETE"
+      end
+      version = edit_version
+    end
+    version.select_build(build_id: build.id)
+    version.update(attributes: { release_type: mode == "auto" ? "AFTER_APPROVAL" : "MANUAL" })
+    phased = version.fetch_app_store_version_phased_release
+    if mode == "phased" && phased.nil?
+      version.create_app_store_version_phased_release(attributes: { phasedReleaseState: "INACTIVE" })
+    elsif mode != "phased" && phased
+      phased.delete!
+    end
+
+    submission = release_app.get_ready_review_submission(platform: IOS, includes: "items") || release_app.create_review_submission(platform: IOS)
+    submission.add_app_store_version_to_review_items(app_store_version_id: version.id) if submission.items.to_a.empty?
+    submission.submit_for_review
+    UI.success("#{version.version_string} (#{number}) submitted, release #{mode}")
+  end
+
+  desc "Release an approved version held for manual release (PENDING_DEVELOPER_RELEASE). apply:true"
+  lane :release_version do |options|
+    version = release_app.get_app_store_versions(filter: { appVersionState: "PENDING_DEVELOPER_RELEASE", platform: IOS }).first ||
+              UI.user_error!("No version is waiting for manual release")
+    phased = version.fetch_app_store_version_phased_release
+    UI.important("Plan: release #{version.version_string}#{phased ? ' as a 7-day phased release' : ' to everyone'}")
+    next UI.important("Dry run. Re-run with apply:true") unless apply?(options)
+
+    version.create_app_store_version_release_request
+    UI.success("#{version.version_string} released")
+  end
+
+  desc "Pause, resume or complete the phased release of the live version. action:pause|resume|complete apply:true"
+  lane :phased do |options|
+    action = options[:action].to_s
+    UI.user_error!("Pass action:pause, action:resume or action:complete") unless %w[pause resume complete].include?(action)
+    version = release_app.get_live_app_store_version(platform: IOS)
+    phased = version&.fetch_app_store_version_phased_release || UI.user_error!("The live version has no phased release")
+    UI.important("Plan: #{action} phased release of #{version.version_string} (now #{phased.phased_release_state}, day #{phased.current_day_number})")
+    next UI.important("Dry run. Re-run with apply:true") unless apply?(options)
+
+    phased.public_send(action)
+    UI.success("Phased release #{action}d")
+  end
+end
