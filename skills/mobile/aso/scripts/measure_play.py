@@ -74,7 +74,8 @@ def main():
     rows, depths, failed = [], [], 0
     for i, k in enumerate(target, 1):
         c, kw = k["c"], k["kw"]
-        pkgs = play_search(kw, c.upper())
+        # hl: ngôn ngữ giao diện Play khi tìm (mặc định en); thị trường bản địa cần đúng hl.
+        pkgs = play_search(kw, c.upper(), k.get("hl", "en"))
         if pkgs is None:
             failed += 1
             rank, depth, mark = None, None, "LỖI"
